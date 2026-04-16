@@ -4,9 +4,9 @@
 
 | Service | URL | Purpose |
 |---|---|---|
-| Plane | http://localhost:3000 | All projects, tasks, cycles |
-| Invoice Ninja | http://localhost:8080 | Clients, invoices, finance |
-| MinIO Console | http://localhost:9090 | File storage admin (optional) |
+| Plane | http://localhost:33000 | All projects, tasks, cycles |
+| Invoice Ninja | http://localhost:38080 | Clients, invoices, finance |
+| MinIO Console | http://localhost:39090 | File storage admin (optional) |
 
 ---
 

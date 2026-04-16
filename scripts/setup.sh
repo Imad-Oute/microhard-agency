@@ -44,7 +44,7 @@ else
 
 # ─── PLANE ────────────────────────────────────────────────────────
 PLANE_SECRET_KEY=${PLANE_SECRET}
-WEB_URL=http://localhost:3000
+WEB_URL=http://localhost:33000
 PLANE_DB_USER=plane
 PLANE_DB_PASSWORD=${PLANE_DB_PASS}
 PLANE_DB_NAME=plane
@@ -97,12 +97,12 @@ echo "════════════════════════�
 echo "  ✓ SETUP COMPLETE"
 echo "══════════════════════════════════════════════════"
 echo ""
-echo "  Plane:          http://localhost:3000"
-echo "  Invoice Ninja:  http://localhost:8080"
-echo "  MinIO Console:  http://localhost:9090"
+echo "  Plane:          http://localhost:33000"
+echo "  Invoice Ninja:  http://localhost:38080"
+echo "  MinIO Console:  http://localhost:39090"
 echo ""
 echo "  Next steps:"
-echo "  1. Open http://localhost:3000 → create your workspace"
-echo "  2. Open http://localhost:8080 → configure Invoice Ninja"
+echo "  1. Open http://localhost:33000 → create your workspace"
+echo "  2. Open http://localhost:38080 → configure Invoice Ninja"
 echo "  3. Follow the setup checklist in output/plans/plane-architecture.md"
 echo ""

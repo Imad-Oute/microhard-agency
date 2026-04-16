@@ -10,7 +10,7 @@ echo "→ Starting Microhard Agency platform..."
 docker compose up -d
 
 echo ""
-echo "  Plane:          http://localhost:3000"
-echo "  Invoice Ninja:  http://localhost:8080"
+echo "  Plane:          http://localhost:33000"
+echo "  Invoice Ninja:  http://localhost:38080"
 echo ""
 docker compose ps
