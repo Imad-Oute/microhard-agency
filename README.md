@@ -4,95 +4,159 @@
 
 | Service | URL | Purpose |
 |---|---|---|
-| Plane | http://localhost:33000 | All projects, tasks, cycles |
+| Plane | http://localhost:33000 | Projects, tasks, cycles |
 | Invoice Ninja | http://localhost:38080 | Clients, invoices, finance |
-| MinIO Console | http://localhost:39090 | File storage admin (optional) |
+| MinIO Console | http://localhost:39090 | File storage admin |
 
 ---
 
-## First-Time Setup (run once)
+## First-Time Setup — run this once per machine
 
 ```bash
-bash scripts/setup.sh
+git clone https://github.com/Imad-Oute/microhard-agency.git
+cd microhard-agency
+cp .env.example .env       # then fill in your secrets (see .env.example)
+bash scripts/setup.sh      # pulls images, starts services, runs migrations
 ```
 
-This will: generate `.env` with secure secrets → pull images → start services → run migrations → create MinIO bucket.
+After setup, create your admin account:
+```bash
+docker exec plane-api python manage.py createsuperuser --email your@email.com --noinput
+docker exec plane-api python manage.py shell -c "
+from django.contrib.auth import get_user_model
+u = get_user_model().objects.get(email='your@email.com')
+u.set_password('YourPassword'); u.is_active=True; u.save()
+print('done')"
+docker exec plane-api python manage.py create_instance_admin your@email.com
+docker exec plane-api python manage.py shell -c "
+from plane.license.models.instance import Instance
+i = Instance.objects.first()
+i.is_setup_done=True; i.is_signup_screen_visited=True; i.save()"
+docker exec plane-redis redis-cli FLUSHALL
+```
+
+Then open http://localhost:33000 and sign in.
 
 ---
 
-## Daily Commands
+## Every day — start and stop
 
 ```bash
-# Start the platform
+# Wake up the platform
 bash scripts/start.sh
 
-# Stop the platform (data preserved)
+# Shut it down (all data preserved in data/)
 bash scripts/stop.sh
-
-# View status
-docker compose ps
-
-# View logs (all services)
-docker compose logs -f
-
-# View logs (specific service)
-docker compose logs -f plane-api
-docker compose logs -f invoice-ninja
 ```
+
+That's it. Data lives in `data/` inside this folder — stopping containers never deletes anything.
+
+**NEVER run `docker compose down -v`** — the `-v` flag deletes all your data.
 
 ---
 
-## Backup (run weekly)
+## Moving to another machine
+
+```bash
+# On the current machine — back up your data first
+bash scripts/backup.sh
+
+# On the new machine
+git clone https://github.com/Imad-Oute/microhard-agency.git
+cd microhard-agency
+
+# Copy your .env from the old machine (same secrets = same encryption keys)
+# Copy your data/ folder from the old machine (or restore from a backup)
+
+# Start
+docker compose up -d
+```
+
+If you copy both `.env` and `data/` from the old machine, you get an exact clone —
+same workspace, same projects, same history, same passwords. Nothing to reconfigure.
+
+---
+
+## Weekly backup
 
 ```bash
 bash scripts/backup.sh
 ```
 
-Exports Plane DB, Invoice Ninja DB, and Invoice Ninja files to `backups/TIMESTAMP/`. Copy this folder to an external drive.
+Creates `backups/YYYYMMDD-HHMMSS/` with compressed dumps of both databases
+and Invoice Ninja files. Copy this folder to an external drive or cloud storage.
 
----
-
-## Upgrading
-
+**Restore from backup:**
 ```bash
-# Pull latest images
-docker compose pull
+# Restore Plane DB
+gunzip -c backups/TIMESTAMP/plane-db.sql.gz | \
+  docker compose exec -T plane-db psql -U plane plane
 
-# Restart with new images
-docker compose up -d
-
-# Run migrations after upgrade
-docker compose run --rm plane-migrator
+# Restore Invoice Ninja DB
+gunzip -c backups/TIMESTAMP/invoice-ninja-db.sql.gz | \
+  docker compose exec -T invoice-ninja-db mysql -u ninja -p$IN_DB_PASSWORD ninja
 ```
 
 ---
 
-## v1 → v2 Tool Additions
+## Useful commands
 
-When ready to expand (after first client delivery):
+```bash
+# Check what's running
+docker compose ps
 
-1. **n8n** — add to docker-compose.yml when automating proven manual processes
-2. **Penpot** — add when doing regular UI/UX design work
-3. **Supabase CLI** — install per-project when building the Construction SaaS
+# Watch live logs (all services)
+docker compose logs -f
+
+# Watch one service
+docker compose logs -f plane-api
+docker compose logs -f invoice-ninja
+
+# Restart one service
+docker compose restart plane-api
+
+# Full restart
+bash scripts/stop.sh && bash scripts/start.sh
+```
 
 ---
 
-## Structure
+## Upgrading Plane or Invoice Ninja
+
+```bash
+docker compose pull          # pull latest images
+bash scripts/stop.sh
+docker compose up -d         # restart with new images
+docker compose run --rm plane-migrator   # run DB migrations
+```
+
+---
+
+## Project structure
 
 ```
 microhard-agency/
-├── docker-compose.yml      ← All services
-├── .env.example            ← Template (committed)
-├── .env                    ← Actual secrets (gitignored — never commit)
+├── docker-compose.yml          ← all 11 services defined here
+├── .env.example                ← variable template (committed)
+├── .env                        ← your actual secrets (gitignored — never commit)
 ├── .gitignore
 ├── configs/
-│   └── plane/
-│       └── nginx.conf      ← Plane proxy config
+│   ├── plane/
+│   │   └── nginx.conf          ← Plane reverse proxy config
+│   └── invoice-ninja/
+│       └── nginx.conf          ← Invoice Ninja FastCGI config
 ├── scripts/
-│   ├── setup.sh            ← Run once: first-time setup
-│   ├── start.sh            ← Daily: start platform
-│   ├── stop.sh             ← Daily: stop platform
-│   └── backup.sh           ← Weekly: backup all data
-├── data/                   ← Docker volume data (gitignored)
-└── backups/                ← Backup archives (gitignored)
+│   ├── setup.sh                ← run once on first install
+│   ├── start.sh                ← daily start
+│   ├── stop.sh                 ← daily stop
+│   └── backup.sh               ← weekly backup
+├── docs/
+│   └── plane-guide.md          ← full Plane usage guide
+├── data/                       ← all database & file data (gitignored)
+│   ├── plane-db/
+│   ├── plane-redis/
+│   ├── plane-minio/
+│   ├── invoice-ninja-db/
+│   └── invoice-ninja/
+└── backups/                    ← backup archives (gitignored)
 ```

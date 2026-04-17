@@ -12,5 +12,6 @@ docker compose up -d
 echo ""
 echo "  Plane:          http://localhost:33000"
 echo "  Invoice Ninja:  http://localhost:38080"
+echo "  MinIO Console:  http://localhost:39090"
 echo ""
 docker compose ps
