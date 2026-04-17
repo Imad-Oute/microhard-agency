@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ═══════════════════════════════════════════════════════════════════
 # MICROHARD AGENCY — LOCAL PLATFORM
 # v1 Stack: Plane (project management) + Invoice Ninja (invoicing)
@@ -44,9 +42,9 @@ services:
 
 # ─────────────────────────────────────────────────────────────────
 # PLANE — Project Management
-# Proxy (nginx) → Frontend (Next.js) + Backend (Django)
 # ─────────────────────────────────────────────────────────────────
 
+  # Nginx proxy: routes /api/ and /auth/ to backend, everything else to frontend
   plane-proxy:
     image: nginx:1.25-alpine
     container_name: plane-proxy
@@ -61,23 +59,34 @@ services:
     networks:
       - agency-net
 
+  # Frontend: static SPA served by nginx on port 3000
   plane-web:
     image: makeplane/plane-frontend:stable
     container_name: plane-web
     restart: unless-stopped
-    command: /usr/local/bin/start.sh apps/app/server.js app
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=${WEB_URL:-http://localhost:33000}
-    depends_on:
-      - plane-api
     networks:
       - agency-net
 
+  # Migrator: runs Django migrations, exits when done
+  plane-migrator:
+    image: makeplane/plane-backend:stable
+    container_name: plane-migrator
+    command: ./bin/docker-entrypoint-migrator.sh
+    restart: "no"
+    environment:
+      <<: *plane-env
+    depends_on:
+      plane-db:
+        condition: service_healthy
+    networks:
+      - agency-net
+
+  # API: waits for migrations via wait_for_migrations management command
   plane-api:
     image: makeplane/plane-backend:stable
     container_name: plane-api
+    command: ./bin/docker-entrypoint-api.sh
     restart: unless-stopped
-    command: ./bin/takeoff
     environment:
       <<: *plane-env
     depends_on:
@@ -85,14 +94,17 @@ services:
         condition: service_healthy
       plane-redis:
         condition: service_started
+      plane-minio:
+        condition: service_started
     networks:
       - agency-net
 
+  # Worker: async task processor (waits for migrations automatically)
   plane-worker:
     image: makeplane/plane-backend:stable
     container_name: plane-worker
+    command: ./bin/docker-entrypoint-worker.sh
     restart: unless-stopped
-    command: ./bin/worker
     environment:
       <<: *plane-env
     depends_on:
@@ -100,28 +112,16 @@ services:
     networks:
       - agency-net
 
+  # Beat: Celery scheduler for recurring jobs (waits for migrations automatically)
   plane-beat:
     image: makeplane/plane-backend:stable
     container_name: plane-beat
+    command: ./bin/docker-entrypoint-beat.sh
     restart: unless-stopped
-    command: ./bin/beat
     environment:
       <<: *plane-env
     depends_on:
       - plane-api
-    networks:
-      - agency-net
-
-  plane-migrator:
-    image: makeplane/plane-backend:stable
-    container_name: plane-migrator
-    command: ./bin/migrate
-    restart: "no"
-    environment:
-      <<: *plane-env
-    depends_on:
-      plane-db:
-        condition: service_healthy
     networks:
       - agency-net
 
@@ -163,33 +163,13 @@ services:
     volumes:
       - plane-minio-data:/data
     ports:
-      - "39090:9090"   # MinIO console (admin UI — optional)
-    networks:
-      - agency-net
-
-  plane-minio-setup:
-    image: minio/mc:latest
-    container_name: plane-minio-setup
-    restart: "no"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    entrypoint: >
-      /bin/sh -c "
-      sleep 5;
-      /usr/bin/mc alias set myminio http://plane-minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb myminio/uploads --ignore-existing;
-      /usr/bin/mc anonymous set download myminio/uploads;
-      exit 0;
-      "
-    depends_on:
-      - plane-minio
+      - "39090:9090"
     networks:
       - agency-net
 
 # ─────────────────────────────────────────────────────────────────
 # INVOICE NINJA — Invoicing & Finance
-# Access: http://localhost:8080
+# Access: http://localhost:38080
 # ─────────────────────────────────────────────────────────────────
 
   invoice-ninja:
