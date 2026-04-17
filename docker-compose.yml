@@ -11,13 +11,6 @@ networks:
   agency-net:
     driver: bridge
 
-volumes:
-  plane-db-data:
-  plane-redis-data:
-  plane-minio-data:
-  invoice-ninja-public:
-  invoice-ninja-storage:
-  invoice-ninja-db-data:
 
 # ─────────────────────────────────────────────────────────────────
 # SHARED ENV — applied to all Plane backend services
@@ -37,8 +30,11 @@ x-plane-env: &plane-env
   CORS_ALLOWED_ORIGINS: ${WEB_URL:-http://localhost:33000}
   AMQP_URL: redis://plane-redis:6379/
   GUNICORN_WORKERS: "2"
+  APP_BASE_URL: ${WEB_URL:-http://localhost:33000}
+  SPACE_BASE_URL: ${WEB_URL:-http://localhost:33000}
   ENABLE_SIGNUP: "1"
   EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+  CELERY_BROKER_CONN_RETRY_ON_STARTUP: "1"
 
 services:
 
@@ -136,7 +132,7 @@ services:
       POSTGRES_PASSWORD: ${PLANE_DB_PASSWORD}
       POSTGRES_DB: ${PLANE_DB_NAME}
     volumes:
-      - plane-db-data:/var/lib/postgresql/data
+      - ./data/plane-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PLANE_DB_USER} -d ${PLANE_DB_NAME}"]
       interval: 10s
@@ -150,7 +146,7 @@ services:
     container_name: plane-redis
     restart: unless-stopped
     volumes:
-      - plane-redis-data:/data
+      - ./data/plane-redis:/data
     networks:
       - agency-net
 
@@ -163,7 +159,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - plane-minio-data:/data
+      - ./data/plane-minio:/data
     ports:
       - "39090:9090"
     networks:
@@ -172,14 +168,29 @@ services:
 # ─────────────────────────────────────────────────────────────────
 # INVOICE NINJA — Invoicing & Finance
 # Access: http://localhost:38080
+# Architecture: nginx (web) → php-fpm (app) + mysql (db)
 # ─────────────────────────────────────────────────────────────────
 
+  # Nginx web server for Invoice Ninja (serves static files + proxies PHP to fpm)
+  invoice-ninja-nginx:
+    image: nginx:1.25-alpine
+    container_name: invoice-ninja-nginx
+    restart: unless-stopped
+    ports:
+      - "38080:80"
+    volumes:
+      - ./configs/invoice-ninja/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/invoice-ninja/public:/var/www/app/public:ro
+    depends_on:
+      - invoice-ninja
+    networks:
+      - agency-net
+
+  # PHP-FPM application container
   invoice-ninja:
     image: invoiceninja/invoiceninja:5
     container_name: invoice-ninja
     restart: unless-stopped
-    ports:
-      - "38080:80"
     environment:
       - APP_URL=http://localhost:38080
       - APP_KEY=${IN_APP_KEY}
@@ -193,8 +204,8 @@ services:
       - TRUSTED_PROXIES=*
       - QUEUE_CONNECTION=database
     volumes:
-      - invoice-ninja-public:/var/www/app/public
-      - invoice-ninja-storage:/var/www/app/storage
+      - ./data/invoice-ninja/public:/var/www/app/public
+      - ./data/invoice-ninja/storage:/var/www/app/storage
     depends_on:
       invoice-ninja-db:
         condition: service_healthy
@@ -211,7 +222,7 @@ services:
       MYSQL_PASSWORD: ${IN_DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${IN_DB_ROOT_PASSWORD}
     volumes:
-      - invoice-ninja-db-data:/var/lib/mysql
+      - ./data/invoice-ninja-db:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${IN_DB_USER}", "-p${IN_DB_PASSWORD}"]
       interval: 10s
