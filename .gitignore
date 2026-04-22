@@ -1,5 +1,4 @@
 # ── Secrets (NEVER commit) ─────────────────────────────────────────
-.env
 
 # ── Local data & backups (NEVER commit) ────────────────────────────
 data/
